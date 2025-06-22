@@ -4,7 +4,8 @@ import logging
 from decimal import Decimal
 from datetime import datetime
 from sqlalchemy.orm import Session
-from database import SessionLocal, BitcoinPrice
+from core.database import SessionLocal
+from models.database import BitcoinPrice
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

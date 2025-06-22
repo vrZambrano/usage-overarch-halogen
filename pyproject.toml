@@ -1,10 +1,10 @@
 [tool.poetry]
 name = "usage-overarch-halogen"
 version = "0.1.0"
-description = ""
+description = "Bitcoin Price Tracking Application"
 authors = ["Victor R Zambrano"]
 readme = "README.md"
-package-mode = false
+packages = [{include = "*", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -18,6 +18,9 @@ python-dotenv = "1.0.0"
 pydantic = "2.5.0"
 asyncio = "3.4.3"
 aiohttp = "^3.12.12"
+databricks-sql-connector = "4.0.3"
+pyarrow = "^20.0.0"
+pandas = "2.2.3"
 
 
 [build-system]

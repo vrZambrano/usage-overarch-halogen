@@ -5,9 +5,10 @@ from typing import List
 import asyncio
 from datetime import datetime, timedelta
 
-from database import get_db, BitcoinPrice
-from models import BitcoinPriceResponse, LatestPriceResponse
-from price_collector import price_collector
+from core.database import get_db
+from models.database import BitcoinPrice
+from models.schemas import BitcoinPriceResponse, LatestPriceResponse
+from services.price_collector import price_collector
 
 app = FastAPI(title="Bitcoin Price Pipeline", version="1.0.0")
 
