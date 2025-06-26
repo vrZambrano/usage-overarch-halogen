@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies using Poetry
 poetry install
 
-# Start PostgreSQL database
+# Start services (PostgreSQL, MLflow, MinIO)
 cd docker && docker-compose up -d
 
 # Copy environment template and configure
@@ -25,7 +25,16 @@ poetry run python -m src.main
 python src/main.py
 
 # Run with auto-reload for development
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+poetry run uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Machine Learning
+```bash
+# Train and log model to MLflow
+poetry run python scripts/train_model.py
+
+# View MLflow UI
+# MLflow is accessible at: http://localhost:5001
 ```
 
 ### Package Management
@@ -42,14 +51,15 @@ poetry update
 
 ## Architecture Overview
 
-This is a Bitcoin price tracking application with async FastAPI backend that collects prices from Binance API every minute and stores them in PostgreSQL.
+This is a Bitcoin price tracking and prediction application with async FastAPI backend that collects prices from Binance API, stores them in PostgreSQL, and provides ML-powered price predictions using MLflow for model management.
 
 ### Application Layers
 
-**API Layer** (`src/api/main.py`):
-- FastAPI application with REST endpoints for price data
+**API Layer** (`src/main.py`):
+- FastAPI application with REST endpoints for price data and predictions
 - Background task management for price collection
 - Dependency injection for database sessions
+- Health check and monitoring endpoints
 
 **Core Layer** (`src/core/database.py`):
 - Database engine and session management
@@ -57,23 +67,41 @@ This is a Bitcoin price tracking application with async FastAPI backend that col
 
 **Models Layer**:
 - `models/database.py`: SQLAlchemy ORM models (BitcoinPrice table)
-- `models/schemas.py`: Pydantic response schemas for API serialization
+- `models/schemas.py`: Pydantic schemas for API serialization and feature engineering
 
 **Services Layer**:
 - `services/price_collector.py`: Async Bitcoin price collection from Binance API
+- `services/bitcoin_service.py`: Business logic for price data and feature engineering
+- `services/prediction_service.py`: ML model training and prediction using MLflow
 - `services/databricks.py`: Optional Databricks integration for analytics
+
+**Scripts Layer**:
+- `scripts/train_model.py`: Standalone script for training ML models
 
 ### Data Flow
 
 1. **Price Collection**: Binance API → BitcoinPriceCollector (async task) → PostgreSQL
-2. **API Requests**: HTTP Request → FastAPI Route → Database Query → Pydantic Response
-3. **Background Processing**: Automatic startup task collects prices every 60 seconds
+2. **API Requests**: HTTP Request → FastAPI Route → BitcoinService → Database Query → Pydantic Response
+3. **Feature Engineering**: Raw price data → Lag features, Moving averages → ML-ready dataset
+4. **ML Pipeline**: Historical data → Feature engineering → Model training → MLflow → Predictions
+5. **Background Processing**: Automatic startup task collects prices every 60 seconds
 
 ### Key Components Integration
 
 - **Startup Sequence**: FastAPI app starts → Database connection established → Background price collection task starts
 - **Price Storage**: BitcoinPriceCollector fetches prices and saves via SQLAlchemy session
-- **API Queries**: Routes use dependency injection to get database sessions and query via ORM
+- **API Queries**: Routes use dependency injection to get database sessions and query via BitcoinService
+- **Feature Engineering**: BitcoinService creates lag features and moving averages for time series forecasting
+- **ML Integration**: MLflow manages model lifecycle, MinIO stores artifacts, predictions served via API
+
+## API Endpoints
+
+- `GET /`: API information and available endpoints
+- `GET /price/latest`: Latest recorded Bitcoin price
+- `GET /price/history`: Price history with engineered features for ML
+- `GET /price/stats`: Price statistics for specified period
+- `GET /price/predict`: ML-powered price prediction
+- `GET /health`: Health check for application, database, and collector status
 
 ## Database Schema
 
@@ -84,11 +112,25 @@ The `bitcoin_prices` table stores:
 - `source`: Data source (default: 'binance')
 - `created_at`: Record creation timestamp
 
+## MLflow Integration
+
+- **Model Training**: Linear regression model trained on engineered features
+- **Feature Engineering**: Lag features (price_t-1 to price_t-5) and moving averages (ma_10)
+- **Model Storage**: Models stored in MLflow with S3-compatible MinIO backend
+- **Prediction**: Latest trained model used for price predictions via API
+
 ## Environment Configuration
 
 Required environment variables in `.env`:
 ```bash
+# Database Configuration
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bitcoin_db
+
+# MLflow Configuration
+MLFLOW_TRACKING_URI=http://localhost:5001
+MLFLOW_S3_ENDPOINT_URL=http://localhost:9000
+AWS_ACCESS_KEY_ID=minio
+AWS_SECRET_ACCESS_KEY=minio123
 
 # Optional Databricks configuration
 DATABRICKS_SERVER_HOSTNAME=your-workspace.databricks.com
@@ -96,11 +138,20 @@ DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/your-warehouse-id
 DATABRICKS_ACCESS_TOKEN=your-access-token
 ```
 
+## Docker Services
+
+The application uses docker-compose with three services:
+- **PostgreSQL**: Database for price storage
+- **MLflow**: Model tracking and registry
+- **MinIO**: S3-compatible object storage for MLflow artifacts
+
 ## Important Notes
 
 - Uses Poetry for dependency management (pyproject.toml)
-- PostgreSQL runs in Docker container via docker-compose
-- Background price collection starts automatically with the FastAPI app
+- PostgreSQL, MLflow, and MinIO run in Docker containers via docker-compose
+- Background price collection runs automatically with the FastAPI app
 - All imports use relative imports within the package structure
+- MLflow provides experiment tracking and model management
+- Feature engineering includes lag features and moving averages for time series forecasting
 - No tests are currently implemented (test directories exist but are empty)
 - Application uses async/await patterns throughout for better performance

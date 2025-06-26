@@ -1,14 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
 from typing import List
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from core.database import get_db
-from models.database import BitcoinPrice
-from models.schemas import BitcoinPriceResponse, LatestPriceResponse
+from models.schemas import BitcoinPriceResponse, LatestPriceResponse, BitcoinPriceFeatureResponse
 from services.price_collector import price_collector
+from services.bitcoin_service import bitcoin_service
+from services.prediction_service import get_latest_prediction
 
 app = FastAPI(title="Bitcoin Price Pipeline", version="1.0.0")
 
@@ -37,6 +37,7 @@ async def root():
         "endpoints": {
             "latest_price": "/price/latest",
             "price_history": "/price/history",
+            "predict": "/price/predict",
             "health": "/health"
         }
     }
@@ -44,7 +45,7 @@ async def root():
 @app.get("/price/latest", response_model=LatestPriceResponse)
 async def get_latest_price(db: Session = Depends(get_db)):
     """Retorna o último preço do Bitcoin registrado"""
-    latest_price = db.query(BitcoinPrice).order_by(desc(BitcoinPrice.created_at)).first()
+    latest_price = bitcoin_service.get_latest_price(db)
     
     if not latest_price:
         raise HTTPException(status_code=404, detail="Nenhum preço encontrado")
@@ -56,55 +57,47 @@ async def get_latest_price(db: Session = Depends(get_db)):
         last_updated=latest_price.created_at
     )
 
-@app.get("/price/history", response_model=List[BitcoinPriceResponse])
+@app.get("/price/history", response_model=List[BitcoinPriceFeatureResponse])
 async def get_price_history(
     limit: int = 100, 
     hours: int = 24,
     db: Session = Depends(get_db)
 ):
-    """Retorna o histórico de preços do Bitcoin"""
-    time_limit = datetime.utcnow() - timedelta(hours=hours)
-    
-    prices = db.query(BitcoinPrice)\
-        .filter(BitcoinPrice.created_at >= time_limit)\
-        .order_by(desc(BitcoinPrice.created_at))\
-        .limit(limit)\
-        .all()
+    """Retorna o histórico de preços do Bitcoin com features de engenharia."""
+    prices = bitcoin_service.get_price_history_with_features(db, limit=limit, hours=hours)
     
     if not prices:
         raise HTTPException(status_code=404, detail="Nenhum preço encontrado no período")
     
     return prices
 
+@app.get("/price/predict")
+async def predict_price():
+    """Retorna a previsão do preço do Bitcoin."""
+    try:
+        prediction = get_latest_prediction()
+        return {"predicted_price": prediction}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
+
 @app.get("/price/stats")
 async def get_price_stats(hours: int = 24, db: Session = Depends(get_db)):
     """Retorna estatísticas dos preços em um período"""
-    time_limit = datetime.utcnow() - timedelta(hours=hours)
+    stats = bitcoin_service.get_price_stats(db, hours=hours)
     
-    prices = db.query(BitcoinPrice.price)\
-        .filter(BitcoinPrice.created_at >= time_limit)\
-        .all()
-    
-    if not prices:
+    if not stats:
         raise HTTPException(status_code=404, detail="Nenhum preço encontrado no período")
     
-    price_values = [float(p.price) for p in prices]
-    
-    return {
-        "period_hours": hours,
-        "total_records": len(price_values),
-        "min_price": min(price_values),
-        "max_price": max(price_values),
-        "avg_price": sum(price_values) / len(price_values),
-        "latest_price": price_values[0] if price_values else None
-    }
+    return stats
 
 @app.get("/health")
 async def health_check(db: Session = Depends(get_db)):
     """Endpoint de health check"""
     try:
         # Testa conexão com o banco
-        latest_price = db.query(BitcoinPrice).order_by(desc(BitcoinPrice.created_at)).first()
+        latest_price = bitcoin_service.get_latest_price(db)
         
         return {
             "status": "healthy",
