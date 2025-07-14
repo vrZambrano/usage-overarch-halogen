@@ -9,6 +9,7 @@ from models.schemas import BitcoinPriceResponse, LatestPriceResponse, BitcoinPri
 from services.price_collector import price_collector
 from services.bitcoin_service import bitcoin_service
 from services.prediction_service import get_latest_prediction
+from utils.timezone import convert_to_brasilia_timezone
 
 app = FastAPI(title="Bitcoin Price Pipeline", version="1.0.0")
 
@@ -103,8 +104,8 @@ async def health_check(db: Session = Depends(get_db)):
             "status": "healthy",
             "database": "connected",
             "collector": "running" if price_collector.running else "stopped",
-            "last_price_update": latest_price.created_at if latest_price else None,
-            "timestamp": datetime.utcnow()
+            "last_price_update": convert_to_brasilia_timezone(latest_price.created_at) if latest_price else None,
+            "timestamp": convert_to_brasilia_timezone(datetime.utcnow())
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")

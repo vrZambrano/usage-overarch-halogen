@@ -10,10 +10,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 poetry install
 
 # Start services (PostgreSQL, MLflow, MinIO)
-cd docker && docker-compose up -d
+cd docker && docker compose up -d
 
 # Copy environment template and configure
 cp .env.example .env
+
+# Create MLflow S3 bucket in MinIO (run after services are up)
+docker exec bitcoin_minio mc alias set local http://localhost:9000 minio minio123
+docker exec bitcoin_minio mc mb local/mlflow
 ```
 
 ### Running the Application
@@ -116,7 +120,9 @@ The `bitcoin_prices` table stores:
 
 - **Model Training**: Linear regression model trained on engineered features
 - **Feature Engineering**: Lag features (price_t-1 to price_t-5) and moving averages (ma_10)
-- **Model Storage**: Models stored in MLflow with S3-compatible MinIO backend
+- **Model Storage**: Models stored in MLflow with S3-compatible MinIO backend (experiment: `bitcoin_prediction_s3`)
+- **Artifact Storage**: Uses MinIO S3 bucket (`s3://mlflow/`) instead of local filesystem
+- **Input Examples**: Models logged with input examples to enable automatic signature inference
 - **Prediction**: Latest trained model used for price predictions via API
 
 ## Environment Configuration
@@ -148,10 +154,19 @@ The application uses docker-compose with three services:
 ## Important Notes
 
 - Uses Poetry for dependency management (pyproject.toml)
-- PostgreSQL, MLflow, and MinIO run in Docker containers via docker-compose
+- PostgreSQL, MLflow, and MinIO run in Docker containers via docker compose
 - Background price collection runs automatically with the FastAPI app
 - All imports use relative imports within the package structure
-- MLflow provides experiment tracking and model management
+- MLflow provides experiment tracking and model management with S3 artifact storage
 - Feature engineering includes lag features and moving averages for time series forecasting
+- Models use the `bitcoin_prediction_s3` experiment with MinIO S3 backend
+- Decimal types are automatically converted to float for ML model compatibility
 - No tests are currently implemented (test directories exist but are empty)
 - Application uses async/await patterns throughout for better performance
+
+## Troubleshooting
+
+### MLflow Issues
+- If model training fails with permission errors, ensure MinIO bucket is created: `docker exec bitcoin_minio mc mb local/mlflow`
+- Models are stored in the `bitcoin_prediction_s3` experiment, not the original `bitcoin_prediction`
+- MLflow server is configured to use MinIO S3 storage at `s3://mlflow/` for artifacts

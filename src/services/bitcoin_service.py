@@ -5,6 +5,7 @@ from typing import List
 import pandas as pd
 
 from models.database import BitcoinPrice
+from utils.timezone import convert_to_brasilia_timezone
 
 
 class BitcoinService:
@@ -97,7 +98,15 @@ class BitcoinService:
         if len(df) > limit:
             df = df.tail(limit)
 
-        return df.to_dict('records')
+        # Convert timestamps to Brasília timezone
+        records = df.to_dict('records')
+        for record in records:
+            if 'timestamp' in record:
+                record['timestamp'] = convert_to_brasilia_timezone(record['timestamp'])
+            if 'created_at' in record:
+                record['created_at'] = convert_to_brasilia_timezone(record['created_at'])
+        
+        return records
 
 
 bitcoin_service = BitcoinService()
