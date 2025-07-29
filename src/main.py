@@ -12,7 +12,6 @@ from models.schemas import BitcoinPriceResponse, LatestPriceResponse, BitcoinPri
 from services.price_collector import price_collector
 from services.bitcoin_service import bitcoin_service
 from services.prediction_service import get_latest_prediction
-from utils.timezone import convert_to_brasilia_timezone
 from utils.logger import app_logger, log_operation
 
 # Variável para controlar a tarefa de background
@@ -400,63 +399,11 @@ async def health_check(db: Session = Depends(get_db)):
         
         response = {
             "status": "healthy",
-            "timestamp": convert_to_brasilia_timezone(datetime.utcnow()),
-            "services": {
-                "database": {
-                    "status": "connected",
-                    "last_price_update": convert_to_brasilia_timezone(latest_price.created_at) if latest_price else None,
-                    "last_update_seconds_ago": last_update_ago
-                },
-                "collector": {
-                    "status": collector_status,
-                    "health": collector_health,
-                    "running": price_collector.running
-                },
-                "api": {
-                    "status": "operational"
-                }
-            },
-            "system": {
-                "python_version": sys.version,
-                "fastapi_version": fastapi.__version__
-            }
+            "database": "connected",
+            "collector": "running" if price_collector.running else "stopped",
+            "last_price_update": latest_price.created_at if latest_price else None,
+            "timestamp": datetime.utcnow()
         }
-        
-        # Se o coletor estiver parado, mas havia preços recentes, pode ser um problema
-        if not price_collector.running and last_update_ago and last_update_ago < 300:
-            response["status"] = "degraded"
-            response["services"]["collector"]["health"] = "stopped_recently"
-            log_operation(
-                operation="health_check",
-                status="warning",
-                details={"message": "Coletor foi interrompido recentemente com dados atualizados"}
-            )
-        
-        # Se não houver preços recentes e o coletor estiver rodando, pode estar com problemas
-        if price_collector.running and latest_price and last_update_ago and last_update_ago > 600:  # 10 minutos
-            response["status"] = "degraded"
-            log_operation(
-                operation="health_check",
-                status="warning",
-                details={
-                    "message": "Coletor está rodando mas sem atualizações nos últimos 10 minutos",
-                    "last_update_seconds_ago": last_update_ago
-                }
-            )
-        
-        log_operation(
-            operation="health_check",
-            status="success",
-            details={
-                "status": response["status"],
-                "collector_status": collector_status,
-                "database_connected": True,
-                "message": "Verificação de saúde concluída com sucesso"
-            }
-        )
-        
-        return response
-        
     except Exception as e:
         log_operation(
             operation="health_check",
