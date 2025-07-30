@@ -2,31 +2,37 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 
 from core.database import get_db
 from models.schemas import BitcoinPriceResponse, LatestPriceResponse, BitcoinPriceFeatureResponse
 from services.price_collector import price_collector
 from services.bitcoin_service import bitcoin_service
 from services.prediction_service import get_latest_prediction
+from utils.timezone import convert_to_brasilia_timezone
 
-app = FastAPI(title="Bitcoin Price Pipeline", version="1.0.0")
-
-# Variável para controlar a tarefa de background
-collection_task = None
-
-@app.on_event("startup")
-async def startup_event():
-    """Inicia a coleta de preços ao inicializar a aplicação"""
-    global collection_task
+# Gerenciador de contexto para o ciclo de vida da aplicação
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Gerencia o ciclo de vida da aplicação FastAPI"""
+    # Startup: inicia a coleta de preços
     collection_task = asyncio.create_task(price_collector.start_collection())
+    
+    try:
+        # Yield para permitir que a aplicação funcione
+        yield
+    finally:
+        # Shutdown: para a coleta e cancela a tarefa
+        price_collector.stop_collection()
+        if collection_task:
+            collection_task.cancel()
+            try:
+                await collection_task
+            except asyncio.CancelledError:
+                pass
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Para a coleta de preços ao encerrar a aplicação"""
-    price_collector.stop_collection()
-    if collection_task:
-        collection_task.cancel()
+app = FastAPI(title="Bitcoin Price Pipeline", version="1.0.0", lifespan=lifespan)
 
 @app.get("/")
 async def root():
@@ -52,9 +58,9 @@ async def get_latest_price(db: Session = Depends(get_db)):
     
     return LatestPriceResponse(
         price=latest_price.price,
-        timestamp=latest_price.timestamp,
+        timestamp=convert_to_brasilia_timezone(latest_price.timestamp),
         source=latest_price.source,
-        last_updated=latest_price.created_at
+        last_updated=convert_to_brasilia_timezone(latest_price.created_at)
     )
 
 @app.get("/price/history", response_model=List[BitcoinPriceFeatureResponse])
@@ -104,7 +110,7 @@ async def health_check(db: Session = Depends(get_db)):
             "database": "connected",
             "collector": "running" if price_collector.running else "stopped",
             "last_price_update": convert_to_brasilia_timezone(latest_price.created_at) if latest_price else None,
-            "timestamp": convert_to_brasilia_timezone(datetime.utcnow())
+            "timestamp": convert_to_brasilia_timezone(datetime.now(timezone.utc))
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
