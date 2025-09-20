@@ -1,8 +1,8 @@
-# Bitcoin Price Tracking Application
+# Aplicativo de Monitoramento do Preço do Bitcoin
 
-This project is a Bitcoin price pipeline application. It utilizes FastAPI to create an API that serves Bitcoin price data. The application collects Bitcoin prices in the background and stores them in a PostgreSQL database. The API exposes endpoints to retrieve the latest price, price history, and price statistics.
+Este projeto é um pipeline de preços do Bitcoin. Utiliza FastAPI para criar uma API que fornece dados de preço do Bitcoin. A aplicação coleta preços do Bitcoin em segundo plano e os armazena em um banco de dados PostgreSQL. A API expõe endpoints para recuperar o preço mais recente, o histórico de preços e estatísticas de preços.
 
-## Project Structure
+## Estrutura do Projeto
 
 ```
 /home/zambra/git/usage-overarch-halogen/
@@ -48,23 +48,23 @@ This project is a Bitcoin price pipeline application. It utilizes FastAPI to cre
     └───test_services/
 ```
 
-## Code Explanations
+## Explicação do Código
 
-*   **`src/main.py`**: The entry point of the FastAPI application. It defines the API endpoints and manages the background price collection task.
-*   **`src/services/price_collector.py`**: This service is responsible for collecting Bitcoin prices from an external source.
-*   **`src/core/database.py`**: Manages the database connection and sessions.
-*   **`src/models/database.py`**: Defines the SQLAlchemy database model for storing Bitcoin prices.
-*   **`src/models/schemas.py`**: Defines the Pydantic schemas for API request and response data validation.
-*   **`docker/docker-compose.yml`**: Defines the PostgreSQL service for the database.
-*   **`pyproject.toml`**: Defines the project dependencies and metadata.
+- **`src/main.py`**: Ponto de entrada da aplicação FastAPI. Define os endpoints da API e gerencia a tarefa de coleta de preços em background.  
+- **`src/services/price_collector.py`**: Serviço responsável por coletar os preços do Bitcoin a partir de uma fonte externa.  
+- **`src/core/database.py`**: Gerencia a conexão com o banco de dados e as sessões.  
+- **`src/models/database.py`**: Define o modelo do banco de dados (SQLAlchemy) para armazenar os preços do Bitcoin.  
+- **`src/models/schemas.py`**: Define os schemas (Pydantic) para validação dos dados de requisições e respostas da API.  
+- **`docker/docker-compose.yml`**: Define o serviço PostgreSQL para o banco de dados.  
+- **`pyproject.toml`**: Define as dependências do projeto e metadados.
 
-## How to Run
+## Como Executar
 
-1.  **Set up the environment:**
-    *   Create a `.env` file from the `.env.example` and populate it with your database credentials.
-2.  **Start the services:**
-    *   Run `docker-compose up -d` to start the PostgreSQL database.
-3.  **Install dependencies:**
-    *   Run `poetry install` to install the project dependencies.
-4.  **Run the application:**
-    *   Run `poetry run uvicorn src.main:app --reload` to start the FastAPI application.
+1.  **Configurar o ambiente:**
+    - Crie um arquivo `.env` a partir de `.env.example` e preencha com as credenciais do seu banco de dados.
+2.  **Iniciar os serviços:**
+    - Execute `docker-compose up -d` para iniciar o banco de dados PostgreSQL.
+3.  **Instalar dependências:**
+    - Execute `poetry install` para instalar as dependências do projeto.
+4.  **Executar a aplicação:**
+    - Execute `poetry run uvicorn src.main:app --reload` para iniciar a aplicação FastAPI.

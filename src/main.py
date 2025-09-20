@@ -11,6 +11,11 @@ from services.price_collector import price_collector
 from services.bitcoin_service import bitcoin_service
 from services.prediction_service import get_latest_prediction
 from utils.timezone import convert_to_brasilia_timezone
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 # Gerenciador de contexto para o ciclo de vida da aplicação
 @asynccontextmanager

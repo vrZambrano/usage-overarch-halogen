@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
-from models.database import Base, BitcoinPrice
+from models.database import Base, BitcoinPrice, ModelDBBitcoinFeatures
 
 load_dotenv()
 

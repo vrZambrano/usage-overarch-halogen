@@ -5,15 +5,22 @@ from decimal import Decimal
 from datetime import datetime
 from sqlalchemy.orm import Session
 from core.database import SessionLocal
-from models.database import BitcoinPrice
+from models.database import BitcoinPrice, ModelDBBitcoinFeatures
+from services.data_enricher import DataEnricher
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 class BitcoinPriceCollector:
-    def __init__(self):
+    def __init__(self, enable_enrichment: bool = True):
         self.api_url = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
         self.running = False
+        self.enable_enrichment = enable_enrichment
+        self.data_enricher = DataEnricher() if enable_enrichment else None
     
     async def fetch_bitcoin_price(self) -> float:
         """Busca o preço atual do Bitcoin da API da Binance"""
@@ -31,9 +38,12 @@ class BitcoinPriceCollector:
             return None
     
     def save_price(self, price: float) -> bool:
-        """Salva o preço no banco de dados"""
+        """Salva o preço no banco de dados e dados enriquecidos (se habilitado)"""
         try:
+            # Salvar preço básico
             db = SessionLocal()
+            timestamp = datetime.now()
+            
             bitcoin_price = BitcoinPrice(
                 price=Decimal(str(price)),
                 source="binance"
@@ -42,8 +52,34 @@ class BitcoinPriceCollector:
             db.commit()
             db.refresh(bitcoin_price)
             db.close()
+            
             logger.info(f"Preço salvo: ${price:.2f}")
+            
+            # Salvar dados enriquecidos se habilitado
+            if self.enable_enrichment and self.data_enricher:
+                try:
+                    enriched_record = self.data_enricher.enrich_single_record(
+                        price=price,
+                        timestamp=timestamp,
+                        source="binance"
+                    )
+                    
+                    if enriched_record:
+                        db = SessionLocal()
+                        enriched_bitcoin = ModelDBBitcoinFeatures(**enriched_record)
+                        db.add(enriched_bitcoin)
+                        db.commit()
+                        db.close()
+                        logger.info(f"Dados enriquecidos salvos para preço ${price:.2f}")
+                    else:
+                        logger.warning("Não foi possível enriquecer o registro")
+                        
+                except Exception as e:
+                    logger.error(f"Erro ao salvar dados enriquecidos: {e}")
+                    # Não falha o processo principal se o enriquecimento falhar
+            
             return True
+            
         except Exception as e:
             logger.error(f"Erro ao salvar preço: {e}")
             return False
