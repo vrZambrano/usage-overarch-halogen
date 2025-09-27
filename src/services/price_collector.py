@@ -2,7 +2,7 @@ import asyncio
 import aiohttp
 import logging
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from core.database import SessionLocal
 from models.database import BitcoinPrice, ModelDBBitcoinFeatures
@@ -42,10 +42,11 @@ class BitcoinPriceCollector:
         try:
             # Salvar preço básico
             db = SessionLocal()
-            timestamp = datetime.now()
+            timestamp = datetime.now(timezone.utc)
             
             bitcoin_price = BitcoinPrice(
                 price=Decimal(str(price)),
+                timestamp=timestamp,
                 source="binance"
             )
             db.add(bitcoin_price)

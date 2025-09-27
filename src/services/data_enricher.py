@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from sqlalchemy.orm import Session
 from sqlalchemy import text

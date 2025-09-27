@@ -20,9 +20,13 @@ class BitcoinFeatureEngineer:
         """Cria features baseadas no tempo"""
         df = df.copy()
         
-        # Garantir que timestamp é datetime
+        # Garantir que timestamp é datetime e timezone-aware
         if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
             df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        # Se não tem timezone info, assumir UTC
+        if df['timestamp'].dt.tz is None:
+            df['timestamp'] = df['timestamp'].dt.tz_localize('UTC')
         
         # Features temporais
         df['minute_of_hour'] = df['timestamp'].dt.minute
