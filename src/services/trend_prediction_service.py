@@ -1,9 +1,9 @@
 import mlflow
 import pandas as pd
 import numpy as np
-from xgboost import XGBRegressor
+from xgboost import XGBClassifier
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, classification_report
 from sqlalchemy.orm import Session
 import os
 import logging
@@ -31,26 +31,26 @@ def _setup_mlflow():
         os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret_key
 
 
-def train_and_log_model():
+def train_and_log_trend_model():
     """
-    Trains an XGBoost regression model with full feature engineering and logs it to MLflow.
+    Trains an XGBoost classification model to predict Bitcoin price trends (Up/Down).
     """
     # Setup MLflow configuration
     _setup_mlflow()
     
     # Set experiment with S3 artifact location
     try:
-        mlflow.create_experiment("bitcoin_price_prediction", artifact_location="s3://mlflow/")
+        mlflow.create_experiment("bitcoin_trend_classification", artifact_location="s3://mlflow/")
     except:
         pass  # Experiment already exists
-    mlflow.set_experiment("bitcoin_price_prediction")
+    mlflow.set_experiment("bitcoin_trend_classification")
     
     # Get database session
     db = next(get_db())
     
     try:
         # 1. Load historical data
-        logger.info("Loading historical data...")
+        logger.info("Loading historical data for trend classification...")
         time_limit_hours = 24 * 7  # 1 week of data
         prices = bitcoin_service.get_price_history(db, limit=10000, hours=time_limit_hours)
         
@@ -73,17 +73,22 @@ def train_and_log_model():
         feature_engineer = BitcoinFeatureEngineer()
         df_features = feature_engineer.engineer_all_features(df, price_col='price')
         
-        # 3. Create target variable (price 15 minutes ahead)
-        # Assuming 1-minute intervals, 15 rows ahead = 15 minutes
-        df_features['target_price'] = df_features['price'].shift(-15)
+        # 3. Create target variable (trend: 1 = Up, 0 = Down)
+        # Compare price 15 minutes ahead with current price
+        df_features['future_price'] = df_features['price'].shift(-15)
+        df_features['trend'] = (df_features['future_price'] > df_features['price']).astype(int)
         
-        # Drop rows with NaN in target or features
+        # Drop rows with NaN
         df_features = df_features.dropna()
         
         if len(df_features) < 50:
             raise ValueError(f"Insufficient data after feature engineering. Found: {len(df_features)} records")
         
         logger.info(f"Feature engineering complete. Shape: {df_features.shape}")
+        
+        # Check class balance
+        trend_counts = df_features['trend'].value_counts()
+        logger.info(f"Class distribution - Down (0): {trend_counts.get(0, 0)}, Up (1): {trend_counts.get(1, 0)}")
         
         # 4. Prepare features and target
         feature_cols = feature_engineer.get_feature_columns()
@@ -92,7 +97,7 @@ def train_and_log_model():
         available_features = [col for col in feature_cols if col in df_features.columns and not df_features[col].isna().all()]
         
         X = df_features[available_features].values
-        y = df_features['target_price'].values
+        y = df_features['trend'].values
         
         # Replace any remaining NaN/inf with 0
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
@@ -106,13 +111,14 @@ def train_and_log_model():
         with mlflow.start_run() as run:
             # Model parameters
             params = {
-                'n_estimators': 100,
-                'max_depth': 6,
+                'n_estimators': 150,
+                'max_depth': 7,
                 'learning_rate': 0.1,
                 'subsample': 0.8,
                 'colsample_bytree': 0.8,
                 'random_state': 42,
-                'n_jobs': -1
+                'n_jobs': -1,
+                'eval_metric': 'logloss'
             }
             
             # Log parameters
@@ -120,36 +126,54 @@ def train_and_log_model():
             mlflow.log_param("n_features", len(available_features))
             mlflow.log_param("n_samples", len(X))
             mlflow.log_param("target_horizon_minutes", 15)
+            mlflow.log_param("class_0_count", int(trend_counts.get(0, 0)))
+            mlflow.log_param("class_1_count", int(trend_counts.get(1, 0)))
             
             # Cross-validation scores
-            cv_rmse_scores = []
-            cv_mae_scores = []
+            cv_accuracy = []
+            cv_precision = []
+            cv_recall = []
+            cv_f1 = []
+            cv_auc = []
             
             for fold, (train_idx, val_idx) in enumerate(tscv.split(X)):
                 X_train, X_val = X[train_idx], X[val_idx]
                 y_train, y_val = y[train_idx], y[val_idx]
                 
-                model = XGBRegressor(**params)
+                model = XGBClassifier(**params)
                 model.fit(X_train, y_train, verbose=False)
                 
                 y_pred = model.predict(X_val)
-                rmse = np.sqrt(mean_squared_error(y_val, y_pred))
-                mae = mean_absolute_error(y_val, y_pred)
+                y_pred_proba = model.predict_proba(X_val)[:, 1]
                 
-                cv_rmse_scores.append(rmse)
-                cv_mae_scores.append(mae)
+                accuracy = accuracy_score(y_val, y_pred)
+                precision = precision_score(y_val, y_pred, zero_division=0)
+                recall = recall_score(y_val, y_pred, zero_division=0)
+                f1 = f1_score(y_val, y_pred, zero_division=0)
                 
-                logger.info(f"Fold {fold+1} - RMSE: {rmse:.2f}, MAE: {mae:.2f}")
+                try:
+                    auc = roc_auc_score(y_val, y_pred_proba)
+                except:
+                    auc = 0.0
+                
+                cv_accuracy.append(accuracy)
+                cv_precision.append(precision)
+                cv_recall.append(recall)
+                cv_f1.append(f1)
+                cv_auc.append(auc)
+                
+                logger.info(f"Fold {fold+1} - Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}, AUC: {auc:.4f}")
             
             # Log cross-validation metrics
-            mlflow.log_metric("cv_rmse_mean", np.mean(cv_rmse_scores))
-            mlflow.log_metric("cv_rmse_std", np.std(cv_rmse_scores))
-            mlflow.log_metric("cv_mae_mean", np.mean(cv_mae_scores))
-            mlflow.log_metric("cv_mae_std", np.std(cv_mae_scores))
+            mlflow.log_metric("cv_accuracy_mean", np.mean(cv_accuracy))
+            mlflow.log_metric("cv_precision_mean", np.mean(cv_precision))
+            mlflow.log_metric("cv_recall_mean", np.mean(cv_recall))
+            mlflow.log_metric("cv_f1_mean", np.mean(cv_f1))
+            mlflow.log_metric("cv_auc_mean", np.mean(cv_auc))
             
             # Train final model on all data
             logger.info("Training final model on all data...")
-            final_model = XGBRegressor(**params)
+            final_model = XGBClassifier(**params)
             final_model.fit(X, y, verbose=False)
             
             # Calculate final metrics on last 20% of data as test set
@@ -158,19 +182,37 @@ def train_and_log_model():
             y_test = y[split_idx:]
             
             y_pred_test = final_model.predict(X_test)
+            y_pred_proba_test = final_model.predict_proba(X_test)[:, 1]
             
-            test_rmse = np.sqrt(mean_squared_error(y_test, y_pred_test))
-            test_mae = mean_absolute_error(y_test, y_pred_test)
-            test_mape = mean_absolute_percentage_error(y_test, y_pred_test) * 100
+            test_accuracy = accuracy_score(y_test, y_pred_test)
+            test_precision = precision_score(y_test, y_pred_test, zero_division=0)
+            test_recall = recall_score(y_test, y_pred_test, zero_division=0)
+            test_f1 = f1_score(y_test, y_pred_test, zero_division=0)
+            
+            try:
+                test_auc = roc_auc_score(y_test, y_pred_proba_test)
+            except:
+                test_auc = 0.0
             
             # Log final metrics
-            mlflow.log_metric("test_rmse", test_rmse)
-            mlflow.log_metric("test_mae", test_mae)
-            mlflow.log_metric("test_mape", test_mape)
+            mlflow.log_metric("test_accuracy", test_accuracy)
+            mlflow.log_metric("test_precision", test_precision)
+            mlflow.log_metric("test_recall", test_recall)
+            mlflow.log_metric("test_f1", test_f1)
+            mlflow.log_metric("test_auc", test_auc)
             
-            logger.info(f"Test RMSE: {test_rmse:.2f}")
-            logger.info(f"Test MAE: {test_mae:.2f}")
-            logger.info(f"Test MAPE: {test_mape:.2f}%")
+            logger.info(f"Test Accuracy: {test_accuracy:.4f}")
+            logger.info(f"Test Precision: {test_precision:.4f}")
+            logger.info(f"Test Recall: {test_recall:.4f}")
+            logger.info(f"Test F1: {test_f1:.4f}")
+            logger.info(f"Test AUC: {test_auc:.4f}")
+            
+            # Confusion matrix
+            cm = confusion_matrix(y_test, y_pred_test)
+            logger.info(f"Confusion Matrix:\n{cm}")
+            
+            # Classification report
+            logger.info(f"Classification Report:\n{classification_report(y_test, y_pred_test, target_names=['Down', 'Up'])}")
             
             # Feature importance
             feature_importance = pd.DataFrame({
@@ -183,33 +225,37 @@ def train_and_log_model():
             for idx, row in top_features.iterrows():
                 mlflow.log_metric(f"importance_{row['feature']}", row['importance'])
             
+            # Save feature importance as artifact
+            importance_dict = feature_importance.to_dict('records')
+            mlflow.log_dict({"feature_importance": importance_dict}, "feature_importance.json")
+            
             # Create input example
             input_example = pd.DataFrame([X[0]], columns=available_features)
             
             # Log model
             mlflow.xgboost.log_model(
                 final_model,
-                "xgboost_price_model",
+                "xgboost_trend_model",
                 input_example=input_example
             )
             
             # Log feature names for later use
             mlflow.log_dict({"feature_names": available_features}, "feature_names.json")
             
-            logger.info(f"Model trained and logged with run_id: {run.info.run_id}")
+            logger.info(f"Trend model trained and logged with run_id: {run.info.run_id}")
             return run.info.run_id
             
     except Exception as e:
-        logger.error(f"Error during model training: {str(e)}")
+        logger.error(f"Error during trend model training: {str(e)}")
         raise
     finally:
         db.close()
 
 
-def get_latest_prediction() -> dict:
+def get_latest_trend_prediction() -> dict:
     """
-    Loads the latest model from MLflow and makes a prediction.
-    Returns a dictionary with predicted price and confidence metrics.
+    Loads the latest trend model from MLflow and makes a prediction.
+    Returns a dictionary with predicted trend and probability.
     """
     # Setup MLflow configuration
     _setup_mlflow()
@@ -219,16 +265,16 @@ def get_latest_prediction() -> dict:
     
     try:
         # 1. Get the latest run from the correct experiment
-        mlflow.set_experiment("bitcoin_price_prediction")
+        mlflow.set_experiment("bitcoin_trend_classification")
         runs = mlflow.search_runs(order_by=["start_time DESC"], max_results=1)
         
         if len(runs) == 0:
-            raise FileNotFoundError("No MLflow runs found. Please train a model first using: python scripts/train_model.py")
+            raise FileNotFoundError("No MLflow runs found. Please train a trend model first using: python scripts/train_trend_model.py")
         
         latest_run_id = runs.iloc[0]["run_id"]
         
         # 2. Load the model
-        logged_model = f"runs:/{latest_run_id}/xgboost_price_model"
+        logged_model = f"runs:/{latest_run_id}/xgboost_trend_model"
         model = mlflow.xgboost.load_model(logged_model)
         
         # Load feature names
@@ -239,7 +285,7 @@ def get_latest_prediction() -> dict:
             feature_names = json.load(f)["feature_names"]
         
         # 3. Get latest data and engineer features
-        logger.info("Getting latest data for prediction...")
+        logger.info("Getting latest data for trend prediction...")
         prices = bitcoin_service.get_price_history(db, limit=100, hours=2)
         
         if not prices or len(prices) < 60:
@@ -275,27 +321,26 @@ def get_latest_prediction() -> dict:
         X_latest = np.array([X_latest])
         
         # 4. Make prediction
-        predicted_price = model.predict(X_latest)[0]
+        predicted_trend = model.predict(X_latest)[0]
+        predicted_proba = model.predict_proba(X_latest)[0]
         
-        # Get current price for comparison
+        # Get current price
         current_price = float(latest_features['price'])
         
-        # Calculate prediction change
-        price_change = predicted_price - current_price
-        price_change_pct = (price_change / current_price) * 100
-        
         # Get model metrics from the run
-        test_mae = runs.iloc[0]["metrics.test_mae"]
-        test_mape = runs.iloc[0]["metrics.test_mape"]
+        test_accuracy = runs.iloc[0]["metrics.test_accuracy"]
+        test_f1 = runs.iloc[0]["metrics.test_f1"]
         
         result = {
-            "predicted_price": float(predicted_price),
+            "trend": "UP" if predicted_trend == 1 else "DOWN",
+            "trend_numeric": int(predicted_trend),
+            "probability_down": float(predicted_proba[0]),
+            "probability_up": float(predicted_proba[1]),
+            "confidence": float(max(predicted_proba)),
             "current_price": float(current_price),
-            "price_change": float(price_change),
-            "price_change_percent": float(price_change_pct),
             "horizon_minutes": 15,
-            "model_mae": float(test_mae),
-            "model_mape": float(test_mape),
+            "model_accuracy": float(test_accuracy),
+            "model_f1_score": float(test_f1),
             "timestamp": latest_features['timestamp'].isoformat(),
             "run_id": latest_run_id
         }
@@ -303,7 +348,39 @@ def get_latest_prediction() -> dict:
         return result
         
     except Exception as e:
-        logger.error(f"Error during prediction: {str(e)}")
+        logger.error(f"Error during trend prediction: {str(e)}")
         raise
     finally:
         db.close()
+
+
+def get_feature_importance() -> list:
+    """
+    Retrieves the feature importance from the latest trained model.
+    Returns a list of features sorted by importance.
+    """
+    # Setup MLflow configuration
+    _setup_mlflow()
+    
+    try:
+        # Get the latest run from the correct experiment
+        mlflow.set_experiment("bitcoin_trend_classification")
+        runs = mlflow.search_runs(order_by=["start_time DESC"], max_results=1)
+        
+        if len(runs) == 0:
+            raise FileNotFoundError("No MLflow runs found. Please train a trend model first using: python scripts/train_trend_model.py")
+        
+        latest_run_id = runs.iloc[0]["run_id"]
+        
+        # Load feature importance
+        client = mlflow.tracking.MlflowClient()
+        importance_path = client.download_artifacts(latest_run_id, "feature_importance.json")
+        import json
+        with open(importance_path, 'r') as f:
+            feature_importance = json.load(f)["feature_importance"]
+        
+        return feature_importance
+        
+    except Exception as e:
+        logger.error(f"Error retrieving feature importance: {str(e)}")
+        raise

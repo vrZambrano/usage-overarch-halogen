@@ -15,32 +15,32 @@ load_dotenv()
 import mlflow
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
 
-from services.prediction_service import train_and_log_model
+from services.trend_prediction_service import train_and_log_trend_model
 
 if __name__ == "__main__":
     print("=" * 80)
-    print("Starting Bitcoin Price Prediction Model Training")
+    print("Starting Bitcoin Trend Classification Model Training")
     print("=" * 80)
     print(f"MLflow Tracking URI: {os.getenv('MLFLOW_TRACKING_URI')}")
-    print(f"Using XGBoost Regressor with full feature engineering")
-    print(f"Target: Predict price 15 minutes ahead")
+    print(f"Using XGBoost Classifier with full feature engineering")
+    print(f"Target: Classify trend (UP/DOWN) 15 minutes ahead")
     print("=" * 80)
     
     try:
-        run_id = train_and_log_model()
+        run_id = train_and_log_trend_model()
         print("\n" + "=" * 80)
-        print("✓ Model training completed successfully!")
+        print("✓ Trend model training completed successfully!")
         print(f"✓ Run ID: {run_id}")
-        print(f"✓ Experiment: bitcoin_price_prediction")
+        print(f"✓ Experiment: bitcoin_trend_classification")
         print("=" * 80)
         print("\nNext steps:")
-        print("  1. Check MLflow UI to view training metrics")
-        print("  2. Test prediction with: python scripts/predict_example.py")
-        print("  3. Start API server to expose predictions")
+        print("  1. Check MLflow UI to view training metrics and feature importance")
+        print("  2. Test prediction via API endpoint: /trend/predict")
+        print("  3. View feature importance via: /trend/feature-importance")
         print("=" * 80)
     except Exception as e:
         print("\n" + "=" * 80)
-        print("✗ Error during model training:")
+        print("✗ Error during trend model training:")
         print(f"  {str(e)}")
         print("=" * 80)
         sys.exit(1)

@@ -6,10 +6,19 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from core.database import get_db
-from models.schemas import BitcoinPriceResponse, LatestPriceResponse, BitcoinPriceFeatureResponse
+from models.schemas import (
+    BitcoinPriceResponse, 
+    LatestPriceResponse, 
+    BitcoinPriceFeatureResponse,
+    PricePredictionResponse,
+    TrendPredictionResponse,
+    FeatureImportance,
+    FeatureImportanceResponse
+)
 from services.price_collector import price_collector
 from services.bitcoin_service import bitcoin_service
 from services.prediction_service import get_latest_prediction
+from services.trend_prediction_service import get_latest_trend_prediction, get_feature_importance
 from utils.timezone import convert_to_brasilia_timezone
 import logging
 
@@ -44,12 +53,36 @@ async def root():
     """Endpoint raiz com informações sobre a API"""
     return {
         "message": "Bitcoin Price Pipeline API",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "description": "API completa para análise e predição de preços do Bitcoin com ML",
         "endpoints": {
-            "latest_price": "/price/latest",
-            "price_history": "/price/history",
-            "predict": "/price/predict",
-            "health": "/health"
+            "price": {
+                "latest": "/price/latest",
+                "history": "/price/history",
+                "stats": "/price/stats",
+                "predict_legacy": "/price/predict",
+                "predict_next": "/price/predict/next"
+            },
+            "trend": {
+                "predict": "/trend/predict",
+                "feature_importance": "/trend/feature-importance"
+            },
+            "system": {
+                "health": "/health",
+                "docs": "/docs"
+            }
+        },
+        "models": {
+            "price_prediction": {
+                "type": "XGBoost Regressor",
+                "target": "Preço 15 minutos à frente",
+                "features": "50+ indicadores técnicos"
+            },
+            "trend_classification": {
+                "type": "XGBoost Classifier",
+                "target": "Tendência UP/DOWN 15 minutos à frente",
+                "features": "50+ indicadores técnicos"
+            }
         }
     }
 
@@ -84,7 +117,7 @@ async def get_price_history(
 
 @app.get("/price/predict")
 async def predict_price():
-    """Retorna a previsão do preço do Bitcoin."""
+    """Retorna a previsão do preço do Bitcoin (endpoint legado - mantido para compatibilidade)."""
     try:
         prediction = get_latest_prediction()
         return {"predicted_price": prediction}
@@ -92,6 +125,83 @@ async def predict_price():
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
+
+
+@app.get("/price/predict/next", response_model=PricePredictionResponse)
+async def predict_next_price():
+    """
+    Retorna a previsão do preço do Bitcoin 15 minutos à frente usando XGBoost.
+    
+    Este endpoint usa o modelo XGBoost treinado com todas as features de engenharia
+    (indicadores técnicos, lags, rolling statistics, etc.) para prever o preço 15 minutos à frente.
+    
+    Returns:
+        PricePredictionResponse: Previsão detalhada incluindo preço previsto, mudança esperada,
+                                métricas de confiança do modelo e timestamp
+    """
+    try:
+        prediction = get_latest_prediction()
+        return prediction
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404, 
+            detail="Modelo não encontrado. Execute 'python scripts/train_model.py' para treinar o modelo primeiro."
+        )
+    except Exception as e:
+        logger.error(f"Error during price prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao fazer predição de preço: {str(e)}")
+
+
+@app.get("/trend/predict", response_model=TrendPredictionResponse)
+async def predict_trend():
+    """
+    Prediz a tendência do Bitcoin (UP/DOWN) para os próximos 15 minutos.
+    
+    Este endpoint usa um modelo XGBoost Classifier treinado com indicadores técnicos
+    completos para classificar se o preço subirá ou cairá nos próximos 15 minutos.
+    
+    Returns:
+        TrendPredictionResponse: Tendência prevista (UP/DOWN), probabilidades,
+                                confiança e métricas do modelo
+    """
+    try:
+        prediction = get_latest_trend_prediction()
+        return prediction
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail="Modelo de tendência não encontrado. Execute 'python scripts/train_trend_model.py' para treinar o modelo primeiro."
+        )
+    except Exception as e:
+        logger.error(f"Error during trend prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao fazer predição de tendência: {str(e)}")
+
+
+@app.get("/trend/feature-importance", response_model=FeatureImportanceResponse)
+async def get_trend_feature_importance():
+    """
+    Retorna a importância das features usadas no modelo de classificação de tendências.
+    
+    Este endpoint fornece insights sobre quais indicadores técnicos e features
+    são mais importantes para o modelo na hora de fazer predições de tendência.
+    
+    Returns:
+        FeatureImportanceResponse: Lista de features ordenadas por importância
+    """
+    try:
+        importance_list = get_feature_importance()
+        return FeatureImportanceResponse(
+            features=[FeatureImportance(**item) for item in importance_list],
+            total_features=len(importance_list)
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail="Modelo de tendência não encontrado. Execute 'python scripts/train_trend_model.py' para treinar o modelo primeiro."
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving feature importance: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar importância das features: {str(e)}")
 
 @app.get("/price/stats")
 async def get_price_stats(hours: int = 24, db: Session = Depends(get_db)):
