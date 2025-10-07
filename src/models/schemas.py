@@ -126,3 +126,77 @@ class FeatureImportanceResponse(BaseModel):
                 "total_features": 50
             }
         }
+
+
+class BitcoinPredictionResponse(BaseModel):
+    """Response model for stored Bitcoin predictions"""
+    id: int
+    timestamp: datetime
+    current_price: float
+    
+    # Price prediction
+    predicted_price: Optional[float]
+    price_change: Optional[float]
+    price_change_percent: Optional[float]
+    price_model_mae: Optional[float]
+    price_model_mape: Optional[float]
+    
+    # Trend prediction
+    predicted_trend: Optional[str]
+    trend_numeric: Optional[int]
+    probability_up: Optional[float]
+    probability_down: Optional[float]
+    confidence: Optional[float]
+    trend_model_accuracy: Optional[float]
+    trend_model_f1: Optional[float]
+    
+    # Actual values (available after 15 minutes)
+    actual_price: Optional[float]
+    actual_trend: Optional[str]
+    prediction_error: Optional[float]
+    trend_correct: Optional[int]
+    
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class PredictionAccuracyResponse(BaseModel):
+    """Response model for prediction accuracy metrics"""
+    total_predictions: int
+    verified_predictions: int
+    
+    # Price model metrics
+    price_mae_avg: float
+    price_mape_avg: float
+    price_rmse: float
+    
+    # Trend model metrics
+    trend_accuracy: float
+    trend_precision: float
+    trend_recall: float
+    trend_f1: float
+    
+    # Confusion matrix
+    true_positives: int  # Correctly predicted UP
+    true_negatives: int  # Correctly predicted DOWN
+    false_positives: int  # Predicted UP, was DOWN
+    false_negatives: int  # Predicted DOWN, was UP
+    
+    time_range_hours: int
+
+
+class CombinedPredictionResponse(BaseModel):
+    """Combined response with both price and trend predictions"""
+    timestamp: datetime
+    current_price: float
+    
+    # Price prediction
+    price_prediction: PricePredictionResponse
+    
+    # Trend prediction
+    trend_prediction: TrendPredictionResponse
+    
+    class Config:
+        protected_namespaces = ()

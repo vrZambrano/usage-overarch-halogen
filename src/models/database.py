@@ -93,3 +93,43 @@ class ModelDBBitcoinFeatures(Base):
     volume_normalized = Column(Float)  # Para futuro uso
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BitcoinPrediction(Base):
+    """
+    Tabela para armazenar previsões de preço e tendência do Bitcoin.
+    Mantém histórico de 90 dias para análise de performance dos modelos.
+    """
+    __tablename__ = "bitcoin_predictions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    
+    # Dados no momento da previsão
+    current_price = Column(Numeric(15, 2), nullable=False)
+    
+    # Previsão de Preço (XGBoost Regressor)
+    predicted_price = Column(Numeric(15, 2))
+    price_change = Column(Numeric(15, 2))
+    price_change_percent = Column(Numeric(10, 4))
+    price_model_mae = Column(Numeric(15, 2))
+    price_model_mape = Column(Numeric(10, 4))
+    price_run_id = Column(String(100))
+    
+    # Previsão de Tendência (XGBoost Classifier)
+    predicted_trend = Column(String(10))
+    trend_numeric = Column(Integer)
+    probability_up = Column(Numeric(10, 4))
+    probability_down = Column(Numeric(10, 4))
+    confidence = Column(Numeric(10, 4))
+    trend_model_accuracy = Column(Numeric(10, 4))
+    trend_model_f1 = Column(Numeric(10, 4))
+    trend_run_id = Column(String(100))
+    
+    # Valores reais (preenchidos após 15 minutos)
+    actual_price = Column(Numeric(15, 2))
+    actual_trend = Column(String(10))
+    prediction_error = Column(Numeric(15, 2))
+    trend_correct = Column(Integer)  # 1 = correto, 0 = incorreto, NULL = ainda não verificado
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

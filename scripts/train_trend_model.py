@@ -17,7 +17,8 @@ mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
 
 from services.trend_prediction_service import train_and_log_trend_model
 
-if __name__ == "__main__":
+def main():
+    """Main function for training the trend classification model"""
     print("=" * 80)
     print("Starting Bitcoin Trend Classification Model Training")
     print("=" * 80)
@@ -44,3 +45,6 @@ if __name__ == "__main__":
         print(f"  {str(e)}")
         print("=" * 80)
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()

@@ -32,11 +32,23 @@ boto3 = "^1.34.125"
 requests = "^2.31.0"
 python-dotenv = "^1.0.1"
 
+# Dashboard
+streamlit = "^1.31.0"
+plotly = "^5.18.0"
+
 
 [tool.poetry.scripts]
+# API
 start-api = "main:main"
+
+# Model Training
 train-price-model = "scripts.train_model:main"
 train-trend-model = "scripts.train_trend_model:main"
+
+# Maintenance
+cleanup-predictions = "scripts.cleanup_old_predictions:main"
+
+# Examples
 examples = "scripts.example_usage:main"
 
 

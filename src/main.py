@@ -19,6 +19,8 @@ from services.price_collector import price_collector
 from services.bitcoin_service import bitcoin_service
 from services.prediction_service import get_latest_prediction
 from services.trend_prediction_service import get_latest_trend_prediction, get_feature_importance
+from services.prediction_collector import prediction_collector
+from services.prediction_storage_service import prediction_storage_service
 from utils.timezone import convert_to_brasilia_timezone
 import logging
 
@@ -30,21 +32,25 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gerencia o ciclo de vida da aplicação FastAPI"""
-    # Startup: inicia a coleta de preços
-    collection_task = asyncio.create_task(price_collector.start_collection())
+    # Startup: inicia a coleta de preços e previsões
+    price_collection_task = asyncio.create_task(price_collector.start_collection())
+    prediction_collection_task = asyncio.create_task(prediction_collector.start_collection())
     
     try:
         # Yield para permitir que a aplicação funcione
         yield
     finally:
-        # Shutdown: para a coleta e cancela a tarefa
+        # Shutdown: para as coletas e cancela as tarefas
         price_collector.stop_collection()
-        if collection_task:
-            collection_task.cancel()
-            try:
-                await collection_task
-            except asyncio.CancelledError:
-                pass
+        prediction_collector.stop_collection()
+        
+        for task in [price_collection_task, prediction_collection_task]:
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 app = FastAPI(title="Bitcoin Price Pipeline", version="1.0.0", lifespan=lifespan)
 
@@ -213,6 +219,76 @@ async def get_price_stats(hours: int = 24, db: Session = Depends(get_db)):
     
     return stats
 
+@app.get("/predictions/latest")
+async def get_latest_predictions(limit: int = 20, db: Session = Depends(get_db)):
+    """
+    Retorna as previsões mais recentes armazenadas no banco.
+    
+    Args:
+        limit: Número de previsões a retornar (padrão: 20)
+        
+    Returns:
+        Lista de previsões com valores previstos e reais (quando disponível)
+    """
+    try:
+        predictions = prediction_storage_service.get_latest_predictions(db, limit=limit)
+        return predictions
+    except Exception as e:
+        logger.error(f"Error retrieving latest predictions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar previsões: {str(e)}")
+
+
+@app.get("/predictions/history")
+async def get_predictions_history(hours: int = 24, limit: int = 1000, db: Session = Depends(get_db)):
+    """
+    Retorna histórico de previsões em um período específico.
+    
+    Args:
+        hours: Número de horas de histórico (padrão: 24)
+        limit: Número máximo de previsões (padrão: 1000)
+        
+    Returns:
+        Lista de previsões históricas
+    """
+    try:
+        predictions = prediction_storage_service.get_predictions_history(db, hours=hours, limit=limit)
+        return predictions
+    except Exception as e:
+        logger.error(f"Error retrieving predictions history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar histórico: {str(e)}")
+
+
+@app.get("/predictions/accuracy")
+async def get_predictions_accuracy(hours: int = 24, db: Session = Depends(get_db)):
+    """
+    Retorna métricas de acurácia das previsões.
+    
+    Calcula métricas de performance dos modelos comparando previsões
+    com valores reais observados.
+    
+    Args:
+        hours: Período para calcular métricas (padrão: 24 horas)
+        
+    Returns:
+        Métricas detalhadas de acurácia incluindo MAE, MAPE, accuracy, precision, etc.
+    """
+    try:
+        metrics = prediction_storage_service.get_accuracy_metrics(db, hours=hours)
+        
+        if not metrics:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sem dados de previsões verificadas nas últimas {hours} horas"
+            )
+        
+        return metrics
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating accuracy metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao calcular métricas: {str(e)}")
+
+
 @app.get("/health")
 async def health_check(db: Session = Depends(get_db)):
     """Endpoint de health check"""
@@ -224,6 +300,7 @@ async def health_check(db: Session = Depends(get_db)):
             "status": "healthy",
             "database": "connected",
             "collector": "running" if price_collector.running else "stopped",
+            "prediction_collector": "running" if prediction_collector.running else "stopped",
             "last_price_update": convert_to_brasilia_timezone(latest_price.created_at) if latest_price else None,
             "timestamp": convert_to_brasilia_timezone(datetime.now(timezone.utc))
         }

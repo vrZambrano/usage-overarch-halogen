@@ -17,7 +17,8 @@ mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
 
 from services.prediction_service import train_and_log_model
 
-if __name__ == "__main__":
+def main():
+    """Main function for training the price prediction model"""
     print("=" * 80)
     print("Starting Bitcoin Price Prediction Model Training")
     print("=" * 80)
@@ -44,3 +45,6 @@ if __name__ == "__main__":
         print(f"  {str(e)}")
         print("=" * 80)
         sys.exit(1)
+
+if __name__ == "__main__":
+    main()
