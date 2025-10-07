@@ -13,12 +13,15 @@ from models.schemas import (
     PricePredictionResponse,
     TrendPredictionResponse,
     FeatureImportance,
-    FeatureImportanceResponse
+    FeatureImportanceResponse,
+    H2OPricePredictionResponse,
+    H2OLeaderboardResponse
 )
 from services.price_collector import price_collector
 from services.bitcoin_service import bitcoin_service
 from services.prediction_service import get_latest_prediction
 from services.trend_prediction_service import get_latest_trend_prediction, get_feature_importance
+from services.h2o_prediction_service import get_latest_h2o_prediction, get_h2o_leaderboard
 from utils.timezone import convert_to_brasilia_timezone
 import logging
 
@@ -202,6 +205,67 @@ async def get_trend_feature_importance():
     except Exception as e:
         logger.error(f"Error retrieving feature importance: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Erro ao buscar importância das features: {str(e)}")
+
+@app.get("/price/predict/h2o", response_model=H2OPricePredictionResponse)
+async def predict_price_h2o():
+    """
+    Retorna a previsão do preço do Bitcoin 15 minutos à frente usando H2O AutoML.
+    
+    Este endpoint usa o melhor modelo selecionado automaticamente pelo H2O AutoML.
+    O H2O testa múltiplos algoritmos (GBM, XGBoost, Deep Learning, GLM, etc.) e
+    seleciona automaticamente o melhor baseado em métricas de performance.
+    
+    Returns:
+        H2OPricePredictionResponse: Previsão detalhada incluindo preço previsto,
+                                    tipo de modelo selecionado, métricas e timestamp
+    """
+    try:
+        prediction = get_latest_h2o_prediction()
+        return prediction
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail="Modelo H2O AutoML não encontrado. Execute 'python scripts/train_h2o_model.py' para treinar primeiro."
+        )
+    except Exception as e:
+        logger.error(f"Error during H2O AutoML prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao fazer predição H2O AutoML: {str(e)}")
+
+
+@app.get("/h2o/leaderboard", response_model=H2OLeaderboardResponse)
+async def get_h2o_automl_leaderboard():
+    """
+    Retorna o leaderboard do H2O AutoML com todos os modelos testados.
+    
+    O leaderboard mostra todos os modelos que o H2O AutoML testou durante o treinamento,
+    ordenados por performance (RMSE). Isso permite comparar diferentes algoritmos e
+    entender qual modelo teve melhor desempenho.
+    
+    Returns:
+        H2OLeaderboardResponse: Lista de todos os modelos testados com suas métricas
+    """
+    try:
+        leaderboard = get_h2o_leaderboard()
+        
+        if not leaderboard:
+            raise HTTPException(status_code=404, detail="Leaderboard vazio")
+        
+        best_model = leaderboard[0].get('model_id', 'Unknown') if leaderboard else 'Unknown'
+        
+        return H2OLeaderboardResponse(
+            leaderboard=leaderboard,
+            total_models=len(leaderboard),
+            best_model=best_model
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail="Modelo H2O AutoML não encontrado. Execute 'python scripts/train_h2o_model.py' para treinar primeiro."
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving H2O leaderboard: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar leaderboard H2O: {str(e)}")
+
 
 @app.get("/price/stats")
 async def get_price_stats(hours: int = 24, db: Session = Depends(get_db)):

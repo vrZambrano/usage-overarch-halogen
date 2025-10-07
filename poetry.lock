@@ -867,6 +867,24 @@ files = [
 ]
 
 [[package]]
+name = "h2o"
+version = "3.46.0.7"
+description = "H2O, Fast Scalable Machine Learning, for python"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "h2o-3.46.0.7-py2.py3-none-any.whl", hash = "sha256:58e15c5cf3e134876fd242b07e38309f68614702ec299b3c6ffbd53484b51e79"},
+]
+
+[package.dependencies]
+requests = "*"
+tabulate = "*"
+
+[package.extras]
+kerberos = ["gssapi", "pykerberos (>=1.1.8,<2.0.0) ; sys_platform != \"win32\"", "winkerberos (>=0.5.0) ; sys_platform == \"win32\""]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 description = "A minimal low-level HTTP client."
@@ -2652,6 +2670,21 @@ anyio = ">=3.4.0,<5"
 full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7)", "pyyaml"]
 
 [[package]]
+name = "tabulate"
+version = "0.9.0"
+description = "Pretty-print tabular data"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "tabulate-0.9.0-py3-none-any.whl", hash = "sha256:024ca478df22e9340661486f85298cff5f6dcdba14f3813e8830015b9ed1948f"},
+    {file = "tabulate-0.9.0.tar.gz", hash = "sha256:0095b12bf5966de529c0feb1fa08671671b3368eec77d7ef7ab114be2c068b3c"},
+]
+
+[package.extras]
+widechars = ["wcwidth"]
+
+[[package]]
 name = "threadpoolctl"
 version = "3.6.0"
 description = "threadpoolctl"
@@ -3089,4 +3122,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "d40d0f8281f6bbe14737165e1b6eba9fe86d35f092cb748c97cfcf8c7faa9c45"
+content-hash = "60a4dd8529d29c38756de866944bf5bf85cf4297285ebb5cf91aed92b9282f34"

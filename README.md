@@ -33,6 +33,14 @@ Sistema completo de monitoramento, análise e predição de preços do Bitcoin u
 - **Métricas**: Acurácia, Precisão, Recall, F1-Score, AUC
 - **Endpoints**: `/trend/predict`, `/trend/feature-importance`
 
+#### 3. Predição de Preço com H2O AutoML (Novo!)
+- **Objetivo**: Prever o preço exato 15 minutos à frente usando AutoML
+- **Modelo**: H2O AutoML (seleciona automaticamente o melhor entre GBM, XGBoost, Deep Learning, GLM, etc.)
+- **Features**: 50+ indicadores técnicos
+- **Métricas**: RMSE, MAE, MAPE, R²
+- **Endpoints**: `/price/predict/h2o`, `/h2o/leaderboard`
+- **Diferencial**: Testa múltiplos algoritmos automaticamente e seleciona o melhor
+
 ### 🔄 MLflow Integration
 - Versionamento de modelos
 - Tracking de experimentos
@@ -338,6 +346,143 @@ Resposta:
   "total_features": 50
 }
 ```
+
+### Endpoints H2O AutoML (Novo!)
+
+#### `GET /price/predict/h2o`
+**Predição de Preço com H2O AutoML**
+
+Usa o melhor modelo selecionado automaticamente pelo H2O AutoML.
+
+```bash
+curl http://localhost:8000/price/predict/h2o
+```
+
+Resposta:
+```json
+{
+  "predicted_price": 45280.75,
+  "current_price": 45000.00,
+  "price_change": 280.75,
+  "price_change_percent": 0.62,
+  "horizon_minutes": 15,
+  "model_type": "GBM",
+  "model_id": "GBM_1_AutoML_20250107_123456",
+  "model_rmse": 118.45,
+  "model_mae": 92.30,
+  "model_mape": 0.25,
+  "model_r2": 0.956,
+  "timestamp": "2025-01-07T12:30:00",
+  "run_id": "abc123def456"
+}
+```
+
+#### `GET /h2o/leaderboard`
+**Leaderboard do H2O AutoML**
+
+Retorna todos os modelos testados pelo H2O AutoML ordenados por performance.
+
+```bash
+curl http://localhost:8000/h2o/leaderboard
+```
+
+Resposta:
+```json
+{
+  "leaderboard": [
+    {
+      "model_id": "GBM_1_AutoML_20250107_123456",
+      "rmse": 118.45,
+      "mae": 92.30,
+      "rmsle": 0.0026,
+      "mean_residual_deviance": 14030.22
+    },
+    {
+      "model_id": "XGBoost_2_AutoML_20250107_123456",
+      "rmse": 125.12,
+      "mae": 98.76,
+      "rmsle": 0.0028,
+      "mean_residual_deviance": 15655.02
+    }
+  ],
+  "total_models": 20,
+  "best_model": "GBM_1_AutoML_20250107_123456"
+}
+```
+
+## 🤖 H2O AutoML - Guia Completo
+
+### O que é H2O AutoML?
+
+H2O AutoML é uma plataforma de Machine Learning automatizado que:
+- **Testa múltiplos algoritmos automaticamente** (GBM, XGBoost, Deep Learning, GLM, Random Forest)
+- **Otimiza hiperparâmetros** de forma automática
+- **Cria modelos ensemble** combinando os melhores modelos
+- **Seleciona o melhor modelo** baseado em métricas de performance
+
+### Como Treinar o Modelo H2O AutoML
+
+```bash
+# Treinar modelo H2O AutoML
+poetry run python scripts/train_h2o_model.py
+
+# Ou sem Poetry
+python scripts/train_h2o_model.py
+```
+
+### Configurações do H2O AutoML
+
+No arquivo `h2o_prediction_service.py`, você pode ajustar:
+
+```python
+aml = H2OAutoML(
+    max_runtime_secs=300,  # Tempo máximo de treinamento (5 minutos)
+    max_models=20,         # Número máximo de modelos a testar
+    seed=42,               # Semente para reprodutibilidade
+    nfolds=5,              # Cross-validation folds
+    sort_metric='RMSE'     # Métrica para ordenar modelos
+)
+```
+
+### Algoritmos Testados pelo H2O AutoML
+
+1. **GBM (Gradient Boosting Machine)**: Excelente para dados tabulares
+2. **XGBoost**: Versão otimizada de GBM
+3. **GLM (Generalized Linear Model)**: Modelo linear robusto
+4. **Deep Learning**: Redes neurais profundas
+5. **Distributed Random Forest**: Ensemble de árvores
+
+### Comparando Modelos
+
+Você pode comparar os 3 modelos de predição de preço:
+
+```python
+import requests
+
+# XGBoost Manual
+xgb_pred = requests.get("http://localhost:8000/price/predict/next").json()
+
+# H2O AutoML
+h2o_pred = requests.get("http://localhost:8000/price/predict/h2o").json()
+
+print(f"XGBoost - Preço Previsto: ${xgb_pred['predicted_price']:.2f} (MAE: {xgb_pred['model_mae']:.2f})")
+print(f"H2O AutoML - Preço Previsto: ${h2o_pred['predicted_price']:.2f} (MAE: {h2o_pred['model_mae']:.2f})")
+print(f"Melhor Algoritmo H2O: {h2o_pred['model_type']}")
+```
+
+### Vantagens do H2O AutoML
+
+✅ **Automação Completa**: Não precisa escolher algoritmo ou hiperparâmetros
+✅ **Múltiplos Modelos**: Testa vários algoritmos em paralelo  
+✅ **Ensemble Learning**: Combina modelos para melhor performance  
+✅ **Leaderboard Transparente**: Veja todos os modelos testados
+✅ **Otimização Automática**: Ajuste de hiperparâmetros incluído
+
+### Desvantagens
+
+⚠️ **Tempo de Treinamento**: Pode demorar mais que treinar um único modelo  
+⚠️ **Uso de Memória**: Requer mais RAM (configurado para 4GB)  
+⚠️ **Complexidade**: Mais difícil de interpretar que um único modelo
 
 ## 🔧 Exemplos de Uso com Python
 
