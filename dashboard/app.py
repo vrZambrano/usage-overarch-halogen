@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import time
 import os
 import warnings
+import pytz
 warnings.filterwarnings('ignore', category=FutureWarning, module='plotly')
 
 # Configuração da página
@@ -211,9 +212,22 @@ while True:
             df_pred = pd.DataFrame(predictions)
             df_prices = pd.DataFrame(price_history)
             
-            # Converter timestamps
+            # Converter timestamps para timezone de Brasília
+            brasilia_tz = pytz.timezone('America/Sao_Paulo')
+            
             df_pred['timestamp'] = pd.to_datetime(df_pred['timestamp'])
             df_prices['timestamp'] = pd.to_datetime(df_prices['timestamp'])
+            
+            # Converter para Brasília/São Paulo
+            if df_pred['timestamp'].dt.tz is None:
+                df_pred['timestamp'] = df_pred['timestamp'].dt.tz_localize('UTC').dt.tz_convert(brasilia_tz)
+            else:
+                df_pred['timestamp'] = df_pred['timestamp'].dt.tz_convert(brasilia_tz)
+            
+            if df_prices['timestamp'].dt.tz is None:
+                df_prices['timestamp'] = df_prices['timestamp'].dt.tz_localize('UTC').dt.tz_convert(brasilia_tz)
+            else:
+                df_prices['timestamp'] = df_prices['timestamp'].dt.tz_convert(brasilia_tz)
             
             # Criar gráfico
             fig = go.Figure()
@@ -402,11 +416,19 @@ while True:
         st.markdown("### 📋 Previsões Recentes")
         
         if predictions:
-            df_recent = df_pred.head(20).copy()
+            df_recent = df_pred.head(60).copy()
+            
+            # Converter timestamps para timezone de Brasília
+            brasilia_tz = pytz.timezone('America/Sao_Paulo')
+            # Check if already tz-aware, if not localize first
+            if df_recent['timestamp'].dt.tz is None:
+                df_recent['timestamp_brasilia'] = df_recent['timestamp'].dt.tz_localize('UTC').dt.tz_convert(brasilia_tz)
+            else:
+                df_recent['timestamp_brasilia'] = df_recent['timestamp'].dt.tz_convert(brasilia_tz)
             
             # Preparar dados para exibição
             display_df = pd.DataFrame({
-                'Timestamp': df_recent['timestamp'].dt.strftime('%Y-%m-%d %H:%M'),
+                'Timestamp': df_recent['timestamp_brasilia'].dt.strftime('%Y-%m-%d %H:%M'),
                 'Preço Atual': df_recent['current_price'].astype(float).apply(lambda x: f"${x:,.2f}"),
                 'Previsto': df_recent['predicted_price'].astype(float).apply(lambda x: f"${x:,.2f}"),
                 'Real': df_recent['actual_price'].apply(lambda x: f"${float(x):,.2f}" if pd.notna(x) else "Aguardando"),

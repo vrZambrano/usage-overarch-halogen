@@ -2,14 +2,16 @@
 
 Sistema completo de monitoramento, análise e predição de preços do Bitcoin usando Machine Learning. O projeto coleta preços em tempo real, aplica engenharia de features avançada com indicadores técnicos e disponibiliza modelos de ML através de uma API REST.
 
-## 🚀 Funcionalidades
+## Funcionalidades
 
-### 📊 Coleta de Dados
+### Coleta de Dados
 - Coleta automática de preços do Bitcoin a cada minuto
-- Armazenamento em PostgreSQL com timezone-aware timestamps
+- Coleta automática de previsões a cada 60 segundos
+- Armazenamento em PostgreSQL
 - Histórico completo para análise temporal
+- Atualização automática de previsões com valores reais após 15 minutos
 
-### 🔬 Feature Engineering
+### Feature Engineering
 - **50+ features técnicas** criadas automaticamente:
   - Indicadores de Momentum (RSI, Stochastic)
   - Indicadores de Tendência (MACD, Médias Móveis)
@@ -17,7 +19,7 @@ Sistema completo de monitoramento, análise e predição de preços do Bitcoin u
   - Features temporais (hora do dia, dia da semana)
   - Lag features e Rolling statistics
 
-### 🤖 Modelos de Machine Learning
+### Modelos de Machine Learning
 
 #### 1. Predição de Preço (XGBoost Regressor)
 - **Objetivo**: Prever o preço exato 15 minutos à frente
@@ -33,13 +35,25 @@ Sistema completo de monitoramento, análise e predição de preços do Bitcoin u
 - **Métricas**: Acurácia, Precisão, Recall, F1-Score, AUC
 - **Endpoints**: `/trend/predict`, `/trend/feature-importance`
 
-### 🔄 MLflow Integration
+### Dashboard Interativo (Streamlit)
+- **Visualização em tempo real** do preço do Bitcoin e previsões
+- **Auto-refresh** configurável (padrão 60 segundos)
+- **Gráficos interativos** com Plotly:
+  - Preço Real vs Previsões
+  - Matriz de Confusão
+  - Feature Importance
+  - Previsto vs Real (scatter plot)
+- **Métricas de performance** dos modelos
+- **60 previsões recentes** em tabela
+- **Análise de acurácia** em tempo real
+
+### MLflow Integration
 - Versionamento de modelos
 - Tracking de experimentos
 - Armazenamento de artefatos (S3-compatible)
 - Métricas e parâmetros logados automaticamente
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 usage-overarch-halogen/
@@ -66,7 +80,7 @@ usage-overarch-halogen/
 └── requirements.txt
 ```
 
-## 🛠️ Instalação e Configuração
+## Instalação e Configuração
 
 ### 1. Pré-requisitos
 - Python 3.9+
@@ -112,10 +126,8 @@ Isso iniciará:
 curl -sSL https://install.python-poetry.org | python3 -
 
 # Instalar dependências do projeto
-poetry install
+poetry lock & poetry install
 
-# Ativar o ambiente virtual
-poetry shell
 ```
 
 #### Opção B: Com pip
@@ -130,36 +142,30 @@ pip install -r requirements.txt
 psql -U user -d bitcoin_db -f init.sql
 ```
 
-## 🎯 Como Usar
+## Como Usar
 
 ### Usando Poetry (Recomendado)
 
 O projeto inclui scripts Poetry para facilitar a execução:
 
+
+
 #### 1. Iniciar a API e Coletar Dados
 ```bash
-# Método 1: Usando Poetry run
 poetry run python src/main.py
-
-# Método 2: Dentro do shell do Poetry
-poetry shell
-cd src
-python main.py
 ```
 
 #### 2. Treinar Modelos
 ```bash
-# Treinar modelo de predição de preço
+# Treinar modelo de predição de preço (utilizar uma das opções)
 poetry run python scripts/train_model.py
+poetry run train-price-model
 
-# Treinar modelo de classificação de tendência
+# Treinar modelo de classificação de tendência (utilizar uma das opções)
 poetry run python scripts/train_trend_model.py
+poetry run train-trend-model
 ```
 
-#### 3. Executar Exemplos Interativos
-```bash
-poetry run python scripts/example_usage.py
-```
 
 ### Usando Python Diretamente
 
@@ -167,68 +173,58 @@ poetry run python scripts/example_usage.py
 Inicie a API para começar a coletar preços:
 
 ```bash
-cd src
-python main.py
-# ou
-uvicorn main:app --reload
+python src/main.py
 ```
 
 A coleta de preços começará automaticamente em background. Aguarde pelo menos **1-2 horas** para acumular dados suficientes para treinar os modelos.
 
 ### Passo 2: Treinar Modelo de Predição de Preço
+
+Utilize uma das opções a seguir:
 ```bash
 python scripts/train_model.py
 ```
 
-Saída esperada:
-```
-================================================================================
-Starting Bitcoin Price Prediction Model Training
-================================================================================
-MLflow Tracking URI: http://localhost:5001
-Using XGBoost Regressor with full feature engineering
-Target: Predict price 15 minutes ahead
-================================================================================
-INFO:__main__:Loaded 5432 price records
-INFO:__main__:Feature engineering complete. Shape: (5312, 52)
-INFO:__main__:Training with 50 features and 5312 samples
-INFO:__main__:Fold 1 - RMSE: 125.30, MAE: 98.45
-INFO:__main__:Fold 2 - RMSE: 132.12, MAE: 102.33
-INFO:__main__:Fold 3 - RMSE: 128.67, MAE: 99.87
-INFO:__main__:Test RMSE: 127.89
-INFO:__main__:Test MAE: 100.12
-INFO:__main__:Test MAPE: 0.28%
-✓ Model training completed successfully!
-✓ Run ID: abc123def456
-✓ Experiment: bitcoin_price_prediction
-```
-
 ### Passo 3: Treinar Modelo de Classificação de Tendência
+Utilize uma das opções a seguir:
 ```bash
 python scripts/train_trend_model.py
 ```
 
-Saída esperada:
-```
-================================================================================
-Starting Bitcoin Trend Classification Model Training
-================================================================================
-MLflow Tracking URI: http://localhost:5001
-Using XGBoost Classifier with full feature engineering
-Target: Classify trend (UP/DOWN) 15 minutes ahead
-================================================================================
-INFO:__main__:Loaded 5432 price records
-INFO:__main__:Class distribution - Down (0): 2689, Up (1): 2623
-INFO:__main__:Fold 1 - Accuracy: 0.8723, Precision: 0.8656, Recall: 0.8812, F1: 0.8733
-INFO:__main__:Test Accuracy: 0.8701
-INFO:__main__:Test F1: 0.8698
-✓ Trend model training completed successfully!
-✓ Run ID: xyz789ghi012
+### Passo 4: Executar o Dashboard Streamlit
+
+Após treinar os modelos e com a API rodando, execute o dashboard:
+
+```bash
+# Com Poetry (Recomendado)
+poetry run streamlit run dashboard/app.py
+
+# Ou com Streamlit diretamente
+streamlit run dashboard/app.py
 ```
 
-## 📡 Endpoints da API
+O dashboard estará disponível em: **http://localhost:8501**
+
+**Funcionalidades do Dashboard:**
+- **Métricas em Tempo Real**: Preço atual, previsão 15min, tendência e probabilidades
+- **Gráfico Previsto vs Real**: Visualização completa com linha de preço real, pontos de previsão e margem de erro (MAE)
+- **Análise de Performance**: 
+  - Modelo de Preço: MAE, MAPE, RMSE e gráfico de dispersão
+  - Modelo de Tendência: Acurácia, Precision, Recall, F1-Score e Matriz de Confusão
+- **Feature Importance**: Top 15 features mais importantes para o modelo de tendência
+- **Previsões Recentes**: Tabela com 60 últimas previsões comparadas com valores reais
+- **Auto-refresh**: Atualização automática a cada 60 segundos (configurável)
+- **Timezone Brasília/São Paulo**: Todos os timestamps em UTC-3
+
+**Configurações do Dashboard:**
+- Intervalo de atualização: 10-300 segundos (padrão: 60s)
+- Período de análise: 1h, 6h, 24h, 7d (padrão: 24h)
+
+## Endpoints da API
 
 ### Informações Gerais
+
+Entre em http://localhost:8000/docs para Swagger UI
 
 #### `GET /`
 Retorna informações sobre a API e todos os endpoints disponíveis.
@@ -339,63 +335,6 @@ Resposta:
 }
 ```
 
-## 🔧 Exemplos de Uso com Python
-
-### Exemplo 1: Obter Predição de Preço
-```python
-import requests
-
-response = requests.get("http://localhost:8000/price/predict/next")
-prediction = response.json()
-
-print(f"Preço Atual: ${prediction['current_price']:.2f}")
-print(f"Preço Previsto (15min): ${prediction['predicted_price']:.2f}")
-print(f"Mudança Esperada: {prediction['price_change_percent']:.2f}%")
-print(f"Confiança (MAE): ${prediction['model_mae']:.2f}")
-```
-
-### Exemplo 2: Obter Predição de Tendência
-```python
-import requests
-
-response = requests.get("http://localhost:8000/trend/predict")
-trend = response.json()
-
-print(f"Tendência Prevista: {trend['trend']}")
-print(f"Confiança: {trend['confidence']*100:.1f}%")
-print(f"Probabilidade de Alta: {trend['probability_up']*100:.1f}%")
-print(f"Probabilidade de Baixa: {trend['probability_down']*100:.1f}%")
-
-if trend['trend'] == 'UP':
-    print("✅ Sinal de COMPRA")
-else:
-    print("⚠️ Sinal de VENDA")
-```
-
-### Exemplo 3: Analisar Features Importantes
-```python
-import requests
-import pandas as pd
-
-response = requests.get("http://localhost:8000/trend/feature-importance")
-data = response.json()
-
-# Criar DataFrame
-df = pd.DataFrame(data['features'])
-top_10 = df.head(10)
-
-print("Top 10 Features Mais Importantes:")
-print(top_10)
-
-# Visualizar
-import matplotlib.pyplot as plt
-plt.barh(top_10['feature'], top_10['importance'])
-plt.xlabel('Importância')
-plt.title('Top 10 Features - Modelo de Tendência')
-plt.tight_layout()
-plt.show()
-```
-
 ## 📊 MLflow UI
 
 Acesse o MLflow UI para visualizar experimentos, métricas e modelos:
@@ -417,10 +356,12 @@ Os modelos podem ser retreinados periodicamente com novos dados:
 
 ```bash
 # Retreinar modelo de preço
-python scripts/train_model.py
+poetry run python scripts/train_model.py
+poetry run train-price-model
 
 # Retreinar modelo de tendência
-python scripts/train_trend_model.py
+poetry run python scripts/train_trend_model.py
+poetry run train-trend-model
 ```
 
 **Recomendação**: Retreine os modelos:
@@ -471,31 +412,10 @@ python scripts/train_trend_model.py
 - **Solução**: Aguarde mais tempo para coletar dados (mínimo 1-2 horas)
 
 ### Erro: "No MLflow runs found"
-- **Solução**: Treine os modelos primeiro com `python scripts/train_model.py`
+- **Solução**: Treine os modelos primeiro com `poetry run train-trend-model` e/ou `poetry run train-price-model`
 
 ### Erro: "Database connection failed"
 - **Solução**: Verifique se o PostgreSQL está rodando (`docker-compose ps`)
 
 ### Modelo com baixa acurácia
 - **Solução**: Colete mais dados, ajuste hiperparâmetros, verifique qualidade dos dados
-
-## 📝 Licença
-
-MIT License
-
-## 👥 Contribuindo
-
-Contribuições são bem-vindas! Por favor:
-1. Fork o projeto
-2. Crie uma branch para sua feature
-3. Commit suas mudanças
-4. Push para a branch
-5. Abra um Pull Request
-
-## 📞 Suporte
-
-Para dúvidas ou problemas, abra uma issue no repositório.
-
----
-
-**Desenvolvido com ❤️ para análise e predição de Bitcoin com Machine Learning**
